@@ -5459,6 +5459,23 @@ export function checkLeavingPlayAllies(
   leavingAllies.forEach((item) => {
     const card = 'card' in item ? item.card : item;
     const nameUpper = card.name.toUpperCase();
+
+    const isCpuOwner = alliesOwner === 'cpu';
+    const ownerState = isCpuOwner ? updatedCpu : updatedPlayer;
+    const rivalState = isCpuOwner ? updatedPlayer : updatedCpu;
+
+    const destRes = checkDestructionResponseTriggers(card, ownerState, rivalState, isCpuOwner);
+    if (destRes.logMessages.length > 0) {
+      logMessages.push(...destRes.logMessages);
+      if (isCpuOwner) {
+        updatedCpu = destRes.updatedPlayer;
+        updatedPlayer = destRes.updatedRival;
+      } else {
+        updatedPlayer = destRes.updatedPlayer;
+        updatedCpu = destRes.updatedRival;
+      }
+    }
+
     if (nameUpper.includes('ELLYLLON')) {
       const targetOpponent = alliesOwner === 'player' ? updatedCpu : updatedPlayer;
       const mill = Math.min(2, targetOpponent.castillo.length);
@@ -5487,3 +5504,146 @@ export function checkLeavingPlayAllies(
 }
 
 
+
+
+export interface DestructionResponseResult {
+  saved: boolean;
+  updatedPlayer: PlayerState;
+  updatedRival: PlayerState;
+  logMessages: string[];
+}
+
+/**
+ * Checks and resolves "en respuesta a que sea destruido/a" triggers
+ * for cards being destroyed (Rey Arturo, Lady Dawn, Santo Grial, Aulladores Blancos, Cuna de Gusanos, Galeb Duhr, Mesa Redonda, Isolda).
+ */
+export function checkDestructionResponseTriggers(
+  destroyedCard: CardData,
+  owner: PlayerState,
+  rival: PlayerState,
+  isCpu: boolean = false
+): DestructionResponseResult {
+  let updatedPlayer = { ...owner };
+  let updatedRival = { ...rival };
+  const logMessages: string[] = [];
+  let saved = false;
+
+  const cardNameUpper = (destroyedCard.name || '').toUpperCase().trim();
+
+  // 1. REY ARTURO PENDRAGÓN: "En respuesta a que sea destruido, puedes descartar 2 para salvarlo."
+  if (cardNameUpper.includes('ARTURO')) {
+    if (updatedPlayer.mano.length >= 2) {
+      const discarded = updatedPlayer.mano.slice(0, 2);
+      updatedPlayer.mano = updatedPlayer.mano.slice(2);
+      updatedPlayer.cementerio = [...updatedPlayer.cementerio, ...discarded];
+      saved = true;
+      logMessages.push();
+    }
+  }
+
+  // 2. LADY DAWN: "En respuesta a que uno de tus Caballeros sea destruido, puedes pagar 3 de oro o destruir a Lady Dawn para salvarlo."
+  if (!saved && destroyedCard.type === 'Aliado' && destroyedCard.race === 'Caballero') {
+    const ladyDawnAlly = updatedPlayer.lineaDefensa.find((a) => a.card.name.toUpperCase().includes('LADY DAWN'));
+    if (ladyDawnAlly) {
+      if (updatedPlayer.reservaOro >= 3) {
+        updatedPlayer.reservaOro -= 3;
+        saved = true;
+        logMessages.push();
+      } else {
+        updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.filter((a) => a.instanceId !== ladyDawnAlly.instanceId);
+        updatedPlayer.cementerio = [...updatedPlayer.cementerio, ladyDawnAlly.card];
+        saved = true;
+        logMessages.push();
+      }
+    }
+  }
+
+  // 3. ISOLDA: "En respuesta a la destrucción de uno de tus Caballeros, puedes desterrar a Isolda para salvarlo."
+  if (!saved && destroyedCard.type === 'Aliado' && destroyedCard.race === 'Caballero') {
+    const isoldaAlly = updatedPlayer.lineaDefensa.find((a) => a.card.name.toUpperCase().includes('ISOLDA'));
+    if (isoldaAlly) {
+      updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.filter((a) => a.instanceId !== isoldaAlly.instanceId);
+      updatedPlayer.destierro = [...updatedPlayer.destierro, isoldaAlly.card];
+      saved = true;
+      logMessages.push();
+    }
+  }
+
+  // 4. SANTO GRIAL: "En respuesta a que una de tus cartas en juego sea destruida, juega a Santo Grial para subirla a la mano."
+  if (!saved) {
+    const grialInHand = updatedPlayer.mano.find((c) => c.name.toUpperCase().includes('SANTO GRIAL'));
+    if (grialInHand && updatedPlayer.reservaOro >= grialInHand.cost) {
+      updatedPlayer.mano = updatedPlayer.mano.filter((c) => c.id !== grialInHand.id);
+      updatedPlayer.cementerio = [...updatedPlayer.cementerio, grialInHand];
+      updatedPlayer.reservaOro -= grialInHand.cost;
+      updatedPlayer.mano = [...updatedPlayer.mano, destroyedCard];
+      saved = true;
+      logMessages.push();
+    }
+  }
+
+  // 5. GALEB DUHR: "En respuesta a que uno de tus oros sea destruido, puedes barajar a Galeb Duhr en tu mazo castillo para salvarlo."
+  if (!saved && destroyedCard.type === 'Oro') {
+    const galebAlly = updatedPlayer.lineaDefensa.find((a) => a.card.name.toUpperCase().includes('GALEB DUHR'));
+    if (galebAlly) {
+      updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.filter((a) => a.instanceId !== galebAlly.instanceId);
+      updatedPlayer.castillo = [...updatedPlayer.castillo, galebAlly.card].sort(() => Math.random() - 0.5);
+      saved = true;
+      logMessages.push();
+    }
+  }
+
+  // 6. AULLADORES BLANCOS: "En respuesta a que una de tus cartas sea destruida, destruye una carta oponente del mismo tipo."
+  const aulladoresInHand = updatedPlayer.mano.find((c) => c.name.toUpperCase().includes('AULLADORES BLANCOS'));
+  if (aulladoresInHand && updatedPlayer.reservaOro >= aulladoresInHand.cost) {
+    updatedPlayer.mano = updatedPlayer.mano.filter((c) => c.id !== aulladoresInHand.id);
+    updatedPlayer.cementerio = [...updatedPlayer.cementerio, aulladoresInHand];
+    updatedPlayer.reservaOro -= aulladoresInHand.cost;
+
+    if (destroyedCard.type === 'Aliado' && updatedRival.lineaDefensa.length > 0) {
+      const target = updatedRival.lineaDefensa[0];
+      updatedRival.lineaDefensa = updatedRival.lineaDefensa.slice(1);
+      updatedRival.cementerio = [...updatedRival.cementerio, target.card, ...(target.attachedWeapons || [])];
+      logMessages.push();
+    } else if (destroyedCard.type === 'Tótem' && updatedRival.lineaApoyo.length > 0) {
+      const target = updatedRival.lineaApoyo[0];
+      updatedRival.lineaApoyo = updatedRival.lineaApoyo.slice(1);
+      updatedRival.cementerio = [...updatedRival.cementerio, target.card];
+      logMessages.push();
+    }
+  }
+
+  // 7. CUNA DE GUSANOS: "En respuesta a que uno de tus aliados sea destruido, baraja de tu cementerio a tu mazo castillo tantas cartas como fuerza tenga ese aliado."
+  const cunaInHand = updatedPlayer.mano.find((c) => c.name.toUpperCase().includes('CUNA DE GUSANOS'));
+  if (cunaInHand && destroyedCard.type === 'Aliado' && updatedPlayer.reservaOro >= cunaInHand.cost && updatedPlayer.cementerio.length > 0) {
+    updatedPlayer.mano = updatedPlayer.mano.filter((c) => c.id !== cunaInHand.id);
+    updatedPlayer.cementerio = [...updatedPlayer.cementerio, cunaInHand];
+    updatedPlayer.reservaOro -= cunaInHand.cost;
+
+    const count = Math.min(destroyedCard.strength || 1, updatedPlayer.cementerio.length);
+    const recycled = updatedPlayer.cementerio.slice(0, count);
+    updatedPlayer.cementerio = updatedPlayer.cementerio.slice(count);
+    updatedPlayer.castillo = [...updatedPlayer.castillo, ...recycled].sort(() => Math.random() - 0.5);
+    logMessages.push();
+  }
+
+  // 8. MESA REDONDA: "En respuesta a que Mesa Redonda sea destruido, destruye 1 oro oponente."
+  if (cardNameUpper.includes('MESA REDONDA') && updatedRival.oroCards.length > 0) {
+    const destroyedGold = updatedRival.oroCards[0];
+    updatedRival.oroCards = updatedRival.oroCards.slice(1);
+    updatedRival.cementerio = [...updatedRival.cementerio, destroyedGold];
+    updatedRival.reservaOro = Math.max(0, updatedRival.reservaOro - 1);
+    logMessages.push();
+  }
+
+  function logClauses(list: string[], msg: string) {
+    list.push(msg);
+  }
+
+  return {
+    saved,
+    updatedPlayer,
+    updatedRival,
+    logMessages,
+  };
+}

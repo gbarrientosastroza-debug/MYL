@@ -2966,6 +2966,108 @@ export function executeCardOnPlayAbility(
     executedAny = true;
   }
 
+    // Capa de Invisibilidad: En respuesta a que tu oponente baje una carta, ésta es barajada en su mazo castillo
+  else if (cardNameUpper.includes('CAPA DE INVISIBILIDAD') || abilityText.includes('ésta es barajada en su mazo castillo')) {
+    if (updatedRival.lineaDefensa.length > 0) {
+      const target = updatedRival.lineaDefensa[updatedRival.lineaDefensa.length - 1];
+      updatedRival.lineaDefensa = updatedRival.lineaDefensa.filter((a) => a.instanceId !== target.instanceId);
+      updatedRival.castillo = [...updatedRival.castillo, target.card].sort(() => Math.random() - 0.5);
+      sound = 'flick';
+      logClauses.push();
+      executedAny = true;
+    } else if (updatedRival.lineaApoyo.length > 0) {
+      const target = updatedRival.lineaApoyo[updatedRival.lineaApoyo.length - 1];
+      updatedRival.lineaApoyo = updatedRival.lineaApoyo.filter((s) => s.instanceId !== target.instanceId);
+      updatedRival.castillo = [...updatedRival.castillo, target.card].sort(() => Math.random() - 0.5);
+      sound = 'flick';
+      logClauses.push();
+      executedAny = true;
+    }
+  }
+
+    // La Mirada de Mordred: En respuesta a declarar tu bloqueo, tus Aliados en línea de ataque vuelven a la línea de defensa y pueden ser declarados bloqueadores
+  else if (cardNameUpper.includes('MIRADA DE MORDRED') || abilityText.includes('declarar tu bloqueo')) {
+    const attackingAllies = updatedPlayer.lineaAtaque || [];
+    if (attackingAllies.length > 0) {
+      const resetAllies = attackingAllies.map((a) => ({
+        ...a,
+        exhausted: false,
+        cannotDefend: false,
+      }));
+      updatedPlayer.lineaDefensa = [...updatedPlayer.lineaDefensa, ...resetAllies];
+      updatedPlayer.lineaAtaque = [];
+      sound = 'shield';
+      logClauses.push('👁️ La Mirada de Mordred: Tus Aliados en línea de ataque retornan a la línea de defensa para bloquear.');
+      executedAny = true;
+    }
+  }
+
+  // Ataque Sorpresa / Ataque de Aliento: En respuesta a resolver el daño, tu oponente recibe el mismo daño hecho a tu mazo castillo
+  else if (
+    cardNameUpper.includes('ATAQUE SORPRESA') ||
+    cardNameUpper.includes('ATAQUE DE ALIENTO') ||
+    abilityText.includes('reciba el mismo daño hecho a tu mazo castillo')
+  ) {
+    sound = 'damage';
+    logClauses.push('💥 ' + card.name + ': En respuesta a resolver el daño, el oponente reflejará el daño de combate recibido.');
+    executedAny = true;
+  }
+
+  // Tótem Maldito: En respuesta a un ataque oponente, eliges un Aliado en su línea de defensa para bloquear su ataque
+  else if (cardNameUpper.includes('TOTEM MALDITO') || abilityText.includes('línea de defensa para bloquear su ataque')) {
+    if (updatedRival.lineaDefensa.length > 0) {
+      const defenderChosen = updatedRival.lineaDefensa[0];
+      sound = 'shield';
+      logClauses.push('🗿 Tótem Maldito: En respuesta al ataque rival, fuerzas a ' + defenderChosen.card.name + ' a defender el ataque.');
+      executedAny = true;
+    }
+  }
+
+  // Tótem de Runas Élficas: En respuesta a declarar tu ataque, pones un Aliado oponente en tu línea de ataque
+  else if (cardNameUpper.includes('RUNAS ELFICAS') || abilityText.includes('ponerlo en tu línea de ataque')) {
+    if (updatedRival.lineaDefensa.length > 0) {
+      const stolen = updatedRival.lineaDefensa[0];
+      updatedRival.lineaDefensa = updatedRival.lineaDefensa.slice(1);
+      updatedPlayer.lineaAtaque = [
+        ...(updatedPlayer.lineaAtaque || []),
+        {
+          ...stolen,
+          hasAttackedThisTurn: true,
+        },
+      ];
+      sound = 'summon';
+      logClauses.push('🗿 Tótem de Runas Élficas: Colocas a ' + stolen.card.name + ' en tu Línea de Ataque para combatir este turno.');
+      executedAny = true;
+    }
+  }
+
+  // Congelar: En respuesta a un ataque, un Aliado oponente pierde su habilidad hasta el final del turno
+  else if (cardNameUpper.includes('CONGELAR') || (abilityText.includes('en respuesta a un ataque') && abilityText.includes('pierde su habilidad'))) {
+    if (updatedRival.lineaAtaque && updatedRival.lineaAtaque.length > 0) {
+      const atk = updatedRival.lineaAtaque[0];
+      sound = 'shield';
+      logClauses.push('❄️ Congelar: En respuesta al ataque, ' + atk.card.name + ' pierde su habilidad hasta el final del turno.');
+      executedAny = true;
+    }
+  }
+
+  // Leprechaun: En respuesta a un ataque, los Aliados oponentes ganan -1 a la fuerza
+  else if (cardNameUpper.includes('LEPRECHAUN') && abilityText.includes('en respuesta a un ataque')) {
+    updatedRival.lineaDefensa = updatedRival.lineaDefensa.map((a) => ({
+      ...a,
+      turnStrengthBonus: (a.turnStrengthBonus || 0) - 1,
+      currentStrength: Math.max(0, a.currentStrength - 1),
+    }));
+    updatedRival.lineaAtaque = (updatedRival.lineaAtaque || []).map((a) => ({
+      ...a,
+      turnStrengthBonus: (a.turnStrengthBonus || 0) - 1,
+      currentStrength: Math.max(0, a.currentStrength - 1),
+    }));
+    sound = 'damage';
+    logClauses.push('🍀 Leprechaun: En respuesta al ataque, todos los Aliados oponentes ganan -1 a la Fuerza.');
+    executedAny = true;
+  }
+
   // =========================================================================
   // 6. DESTRUCTION / BOUNCE / BANISH
   // =========================================================================
@@ -4658,6 +4760,47 @@ export function executeTurnEndAbilities(
       logMessages.push(anisMsg);
       specialTriggerLogs.push(anisMsg);
     }
+  }
+
+    // 1c. Sir Lionel: En respuesta a finalizar tu turno, si está en línea de ataque puedes agruparlo
+  if (target.lineaAtaque && target.lineaAtaque.length > 0) {
+    const lionelIdx = target.lineaAtaque.findIndex((a) => a.card.name.toUpperCase().includes('SIR LIONEL'));
+    if (lionelIdx !== -1) {
+      const lionel = target.lineaAtaque[lionelIdx];
+      const newAtk = [
+        ...target.lineaAtaque.slice(0, lionelIdx),
+        ...target.lineaAtaque.slice(lionelIdx + 1),
+      ];
+      const newDef = [
+        ...target.lineaDefensa,
+        { ...lionel, exhausted: false, blockedById: undefined },
+      ];
+      setTarget({
+        ...target,
+        lineaAtaque: newAtk,
+        lineaDefensa: newDef,
+      });
+      const lionelMsg = '🛡️ Sir Lionel: En respuesta a finalizar tu turno, regresa de la línea de ataque a la línea de defensa.';
+      logMessages.push(lionelMsg);
+      specialTriggerLogs.push(lionelMsg);
+    }
+  }
+
+  // 1d. Hijas del Caldero: Si tienes 3 Hijas del Caldero en juego: en respuesta a finalizar tu turno, puedes desterrarlas para ganar un turno extra
+  const hijasInPlay = targetAllies.filter((a) => a.card.name.toUpperCase().includes('HIJAS DEL CALDERO'));
+  if (hijasInPlay.length >= 3) {
+    const hijasIds = new Set(hijasInPlay.map((h) => h.instanceId));
+    const cleanDef = target.lineaDefensa.filter((a) => !hijasIds.has(a.instanceId));
+    const cleanAtk = (target.lineaAtaque || []).filter((a) => !hijasIds.has(a.instanceId));
+    setTarget({
+      ...target,
+      lineaDefensa: cleanDef,
+      lineaAtaque: cleanAtk,
+      destierro: [...target.destierro, ...hijasInPlay.map((h) => h.card)],
+    });
+    const hijasMsg = '🔮 Hijas del Caldero: En respuesta a finalizar tu turno, desterraste 3 Hijas del Caldero para ganar un turno extra.';
+    logMessages.push(hijasMsg);
+    specialTriggerLogs.push(hijasMsg);
   }
 
   // 2. Banishing La Lanza de Los Dioses at turn end

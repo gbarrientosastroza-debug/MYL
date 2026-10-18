@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    color: #f1f5f9;
+    background-color: #090a0f;
+  }
+
+  h1, h2, h3, .font-cinzel {
+    font-family: 'Cinzel', serif;
+    letter-spacing: 0.03em;
+  }
+
+  .font-cinzel-decorative {
+    font-family: 'Cinzel Decorative', cursive;
+  }
+
+  .font-medieval {
+    font-family: 'MedievalSharp', cursive, serif;
+  }
+}
+
+/* Card 3D transform utilities */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Holographic Foil Gradients */
+.foil-rainbow {
+  background: linear-gradient(
+    115deg,
+    transparent 0%,
+    rgba(255, 0, 0, 0.25) 20%,
+    rgba(255, 230, 0, 0.3) 35%,
+    rgba(0, 255, 128, 0.3) 50%,
+    rgba(0, 200, 255, 0.35) 65%,
+    rgba(180, 0, 255, 0.25) 80%,
+    transparent 100%
+  );
+  mix-blend-mode: color-dodge;
+}
+
+.foil-gold {
+  background: linear-gradient(
+    120deg,
+    transparent 10%,
+    rgba(255, 215, 0, 0.4) 30%,
+    rgba(255, 255, 255, 0.6) 48%,
+    rgba(255, 180, 0, 0.45) 55%,
+    rgba(255, 220, 100, 0.3) 75%,
+    transparent 95%
+  );
+  mix-blend-mode: overlay;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0d1117;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a3441;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3b4b5e;
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Mitos & Leyendas - Generador y Juego de Cartas",
+  "description": "Generador de cartas TCG estilo Primera Edición (Espada Sagrada) con visualizador 3D, cartas legendarias y simulador de duelos interactivo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

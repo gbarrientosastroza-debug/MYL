@@ -3068,6 +3068,103 @@ export function executeCardOnPlayAbility(
     executedAny = true;
   }
 
+    // Each Uisge: En tu fase de vigilia y una vez por turno, puedes pagar el coste de una carta en tu cementerio para barajarla en tu mazo castillo
+  else if (cardNameUpper.includes('EACH USIGE') || abilityText.includes('pagar el coste de una carta en tu cementerio')) {
+    if (updatedPlayer.cementerio.length === 0) {
+      return {
+        updatedPlayer,
+        updatedRival,
+        logMessage: '⚠️ Tu Cementerio está vacío.',
+        abilityName: card.name,
+        activatedSuccessfully: false,
+      };
+    }
+    if (!isCpu) {
+      pendingTutor = {
+        sourceZone: 'cementerio',
+        filterType: 'any',
+        destination: 'castillo_shuffle',
+        maxCount: 1,
+        reason: 'Each Uisge: Elige 1 carta de tu Cementerio para barajar en tu Mazo Castillo',
+        cardName: card.name,
+      };
+      logClauses.push('Each Uisge: Elige 1 carta de tu Cementerio para barajarla en tu Mazo Castillo.');
+    } else {
+      const recycled = updatedPlayer.cementerio[0];
+      updatedPlayer.cementerio = updatedPlayer.cementerio.slice(1);
+      updatedPlayer.castillo = [...updatedPlayer.castillo, recycled].sort(() => Math.random() - 0.5);
+      logClauses.push('Each Uisge: Baraja 1 carta del Cementerio al Mazo Castillo.');
+    }
+    executedAny = true;
+  }
+
+  // La Traición de Lancelot: Destruye uno de tus Aliados para que tu oponente bote tantas cartas como fuerza tenga el Aliado
+  else if (cardNameUpper.includes('TRAICION DE LANCELOT') || abilityText.includes('destruye uno de tus aliados para que tu oponente bote')) {
+    const friendlyAllies = [...updatedPlayer.lineaDefensa, ...(updatedPlayer.lineaAtaque || [])];
+    if (friendlyAllies.length === 0) {
+      return {
+        updatedPlayer,
+        updatedRival,
+        logMessage: '⚠️ No tienes Aliados en juego para sacrificar con La Traición de Lancelot.',
+        abilityName: card.name,
+        activatedSuccessfully: false,
+      };
+    }
+    if (chosenOptionId) {
+      const target = friendlyAllies.find((a) => a.instanceId === chosenOptionId) || friendlyAllies[0];
+      updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.filter((a) => a.instanceId !== target.instanceId);
+      updatedPlayer.lineaAtaque = (updatedPlayer.lineaAtaque || []).filter((a) => a.instanceId !== target.instanceId);
+      updatedPlayer.cementerio = [...updatedPlayer.cementerio, target.card, ...(target.attachedWeapons || [])];
+
+      const millCount = Math.min(target.currentStrength, updatedRival.castillo.length);
+      if (millCount > 0) {
+        const milled = updatedRival.castillo.slice(0, millCount);
+        updatedRival.castillo = updatedRival.castillo.slice(millCount);
+        updatedRival.cementerio = [...updatedRival.cementerio, ...milled];
+      }
+      sound = 'damage';
+      logClauses.push('💔 La Traición de Lancelot: Destruyes a "' + target.card.name + '" (' + target.currentStrength + ' F). El rival bota ' + millCount + ' carta(s) de su Mazo Castillo.');
+      executedAny = true;
+    } else {
+      if (!isCpu && friendlyAllies.length > 1) {
+        return {
+          updatedPlayer,
+          updatedRival,
+          logMessage: 'Elige qué Aliado destruir para que el rival bote cartas.',
+          abilityName: card.name,
+          activatedSuccessfully: true,
+          pendingChoice: {
+            title: 'LA TRAICIÓN DE LANCELOT',
+            cardName: card.name,
+            description: 'Selecciona el Aliado propio que deseas destruir para infligir daño de Mazo Castillo equivalente a su Fuerza:',
+            options: friendlyAllies.map((a) => ({
+              id: a.instanceId,
+              label: a.card.name + ' (' + a.currentStrength + ' F)',
+              description: 'Destruye a ' + a.card.name + '. El rival botará ' + a.currentStrength + ' carta(s) de su Castillo.',
+              icon: '💥',
+            })),
+            invokingCard: card,
+          },
+        };
+      } else {
+        const target = friendlyAllies[0];
+        updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.filter((a) => a.instanceId !== target.instanceId);
+        updatedPlayer.lineaAtaque = (updatedPlayer.lineaAtaque || []).filter((a) => a.instanceId !== target.instanceId);
+        updatedPlayer.cementerio = [...updatedPlayer.cementerio, target.card, ...(target.attachedWeapons || [])];
+
+        const millCount = Math.min(target.currentStrength, updatedRival.castillo.length);
+        if (millCount > 0) {
+          const milled = updatedRival.castillo.slice(0, millCount);
+          updatedRival.castillo = updatedRival.castillo.slice(millCount);
+          updatedRival.cementerio = [...updatedRival.cementerio, ...milled];
+        }
+        sound = 'damage';
+        logClauses.push('💔 La Traición de Lancelot: Destruyes a "' + target.card.name + '" (' + target.currentStrength + ' F). El rival bota ' + millCount + ' carta(s) de su Mazo Castillo.');
+        executedAny = true;
+      }
+    }
+  }
+
   // =========================================================================
   // 6. DESTRUCTION / BOUNCE / BANISH
   // =========================================================================

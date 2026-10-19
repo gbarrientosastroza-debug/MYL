@@ -1643,6 +1643,324 @@ export function executeCardOnPlayAbility(
     }
   }
 
+    // Sir Gawein: En guerra de Talismanes, destierra a Sir Gawein para que no se puedan jugar Talismanes hasta el final del turno
+  else if (cardNameUpper.includes('GAWEIN')) {
+    updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.filter((a) => a.card.id !== card.id);
+    updatedPlayer.destierro = [...updatedPlayer.destierro, card];
+    sound = 'shield';
+    logClauses.push('⚔️ Sir Gawein: Se destierra a la Zona de Destierro para prohibir el uso de Talismanes hasta el final del turno.');
+    executedAny = true;
+  }
+
+  // Sir Tristán: Cuando Sir Tristán entra en juego, busca una carta en tu cementerio y pónla en tu mano
+  else if (cardNameUpper.includes('TRISTAN')) {
+    if (updatedPlayer.cementerio.length > 0) {
+      if (!isCpu) {
+        pendingTutor = {
+          sourceZone: 'cementerio',
+          filterType: 'any',
+          destination: 'mano',
+          maxCount: 1,
+          reason: 'Sir Tristán: Busca 1 carta de tu Cementerio para ponerla en tu mano',
+          cardName: card.name,
+        };
+        logClauses.push('Sir Tristán: Elige 1 carta de tu Cementerio para recuperarla a tu mano.');
+      } else {
+        const recycled = updatedPlayer.cementerio[0];
+        updatedPlayer.cementerio = updatedPlayer.cementerio.slice(1);
+        updatedPlayer.mano = [...updatedPlayer.mano, recycled];
+        logClauses.push('Sir Tristán (Rival): Recupera una carta del Cementerio a su mano.');
+      }
+      executedAny = true;
+    }
+  }
+
+  // Príncipe Valiant: En guerra de Talismanes, puedes destruir Príncipe Valiant para que tus Caballeros sean imbloqueables
+  else if (cardNameUpper.includes('VALIANT')) {
+    updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.filter((a) => a.card.id !== card.id);
+    updatedPlayer.cementerio = [...updatedPlayer.cementerio, card];
+    updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.map((a) =>
+      a.card.race === 'Caballero' ? { ...a, unblockable: true } : a
+    );
+    updatedPlayer.lineaAtaque = (updatedPlayer.lineaAtaque || []).map((a) =>
+      a.card.race === 'Caballero' ? { ...a, unblockable: true } : a
+    );
+    sound = 'victory';
+    logClauses.push('👑 Príncipe Valiant: Se destruye para otorgar Imbloqueable a todos tus Caballeros hasta el final del turno.');
+    executedAny = true;
+  }
+
+  // El Obispo de Londinium: Cuando El Obispo De Londinium entra en juego, tu oponente bota 3 cartas
+  else if (cardNameUpper.includes('OBISPO')) {
+    const millCount = Math.min(3, updatedRival.castillo.length);
+    if (millCount > 0) {
+      const milled = updatedRival.castillo.slice(0, millCount);
+      updatedRival.castillo = updatedRival.castillo.slice(millCount);
+      updatedRival.cementerio = [...updatedRival.cementerio, ...milled];
+      sound = 'damage';
+      logClauses.push('⛪ El Obispo de Londinium: El oponente bota 3 cartas de su Mazo Castillo.');
+      executedAny = true;
+    }
+  }
+
+  // Cornelius de York: En guerra de Talismanes, puedes desterrar a Cornelius de York para destruir un Caballero oponente de igual o menor fuerza
+  else if (cardNameUpper.includes('CORNELIUS')) {
+    const eligibleTargets = updatedRival.lineaDefensa.filter(
+      (a) => a.card.race === 'Caballero' && a.currentStrength <= card.strength
+    );
+    if (eligibleTargets.length > 0) {
+      const target = eligibleTargets[0];
+      updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.filter((a) => a.card.id !== card.id);
+      updatedPlayer.destierro = [...updatedPlayer.destierro, card];
+      updatedRival.lineaDefensa = updatedRival.lineaDefensa.filter((a) => a.instanceId !== target.instanceId);
+      updatedRival.cementerio = [...updatedRival.cementerio, target.card, ...(target.attachedWeapons || [])];
+      sound = 'damage';
+      logClauses.push('🗡️ Cornelius de York: Se destierra para destruir a "' + target.card.name + '" de la defensa rival.');
+      executedAny = true;
+    }
+  }
+
+  // Josofones: Cuando Josofones entra en juego, puedes buscar en tu mazo castillo a Sir Boores y ponerlo en tu mano
+  else if (cardNameUpper.includes('JOSOFONES')) {
+    if (!isCpu) {
+      pendingTutor = {
+        sourceZone: 'castillo',
+        filterName: 'BOORES',
+        destination: 'mano',
+        maxCount: 1,
+        reason: 'Josofones: Busca a Sir Boores en tu Mazo Castillo y ponlo en tu mano',
+        cardName: card.name,
+      };
+      logClauses.push('Josofones: Busca a Sir Boores en tu Mazo Castillo.');
+    } else {
+      const foundIdx = updatedPlayer.castillo.findIndex((c) => c.name.toUpperCase().includes('BOORES'));
+      if (foundIdx !== -1) {
+        const found = updatedPlayer.castillo[foundIdx];
+        updatedPlayer.castillo = [
+          ...updatedPlayer.castillo.slice(0, foundIdx),
+          ...updatedPlayer.castillo.slice(foundIdx + 1),
+        ].sort(() => Math.random() - 0.5);
+        updatedPlayer.mano = [...updatedPlayer.mano, found];
+        logClauses.push('Josofones (Rival): Añade a Sir Boores a su mano.');
+      }
+    }
+    executedAny = true;
+  }
+
+  // Dragón de Magma: Cuando Dragón de Magma entra en juego, destruye un Aliado oponente
+  else if (cardNameUpper.includes('DRAGON DE MAGMA') || cardNameUpper.includes('DRAGÓN DE MAGMA')) {
+    if (updatedRival.lineaDefensa.length > 0) {
+      const target = updatedRival.lineaDefensa[0];
+      updatedRival.lineaDefensa = updatedRival.lineaDefensa.slice(1);
+      updatedRival.cementerio = [...updatedRival.cementerio, target.card, ...(target.attachedWeapons || [])];
+      sound = 'damage';
+      logClauses.push('🐉 Dragón de Magma: Destruye a "' + target.card.name + '" de la línea de defensa rival.');
+      executedAny = true;
+    }
+  }
+
+  // Dragón de Eter: Cuando Dragón de Eter es declarado atacante, todos los Aliados oponentes ganan - 1 a la fuerza
+  else if (cardNameUpper.includes('DRAGON DE ETER') || cardNameUpper.includes('DRAGÓN DE ETER')) {
+    logClauses.push('🐉 Dragón de Eter en juego: Aplica -1 a la Fuerza de todos los Aliados rivales al ser declarado atacante.');
+    executedAny = true;
+  }
+
+  // Dragón de Aire: puede atacar cuando entra en juego
+  else if (cardNameUpper.includes('DRAGON DE AIRE') || cardNameUpper.includes('DRAGÓN DE AIRE')) {
+    logClauses.push('🐉 Dragón de Aire entra en juego habilitado para atacar este turno.');
+    executedAny = true;
+  }
+
+  // Dragón del Agua: Cuando Dragón del Agua entra en juego, los Dragones no pueden ser afectados por Talismanes hasta el final del turno
+  else if (cardNameUpper.includes('DRAGON DEL AGUA') || cardNameUpper.includes('DRAGÓN DEL AGUA')) {
+    updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.map((a) =>
+      a.card.race === 'Dragón' ? { ...a, cannotBeDestroyedByTalismans: true } : a
+    );
+    sound = 'shield';
+    logClauses.push('🐉 Dragón del Agua: Otorga inmunidad a Talismanes a todos tus Dragones hasta el final del turno.');
+    executedAny = true;
+  }
+
+  // Dragón de Plata: En tu fase de vigilia, elegir entre pagar 1 para robar 1; pagar 2 para descartar 1 al azar; o pagar 3 para que bote 2
+  else if (cardNameUpper.includes('DRAGON DE PLATA') || cardNameUpper.includes('DRAGÓN DE PLATA')) {
+    if (isManual) {
+      if (!chosenOptionId && !isCpu) {
+        return {
+          updatedPlayer,
+          updatedRival,
+          logMessage: 'Dragón de Plata: Selecciona qué opción deseas activar.',
+          abilityName: card.name,
+          activatedSuccessfully: true,
+          pendingChoice: {
+            title: 'DRAGÓN DE PLATA (VIGILIA)',
+            cardName: card.name,
+            description: 'Selecciona una de las 3 habilidades pagando su coste correspondiente:',
+            options: [
+              { id: 'opt_1_gold', label: 'Pagar 1 Oro: Robar 1 carta', description: 'Paga 1 Oro de Reserva para robar 1 carta del Mazo Castillo.', icon: '🎴' },
+              { id: 'opt_2_gold', label: 'Pagar 2 Oro: Descartar 1 rival al azar', description: 'Paga 2 Oro de Reserva para descartar 1 carta de la mano rival al azar.', icon: '🗑️' },
+              { id: 'opt_3_gold', label: 'Pagar 3 Oro: Rival bota 2 cartas', description: 'Paga 3 Oro de Reserva para infligir 2 de daño de Mazo Castillo al rival.', icon: '💥' },
+            ],
+            invokingCard: card,
+          },
+        };
+      }
+      const choice = chosenOptionId || 'opt_1_gold';
+      if (choice === 'opt_1_gold' && payGold(1)) {
+        const { player: withDraw, drawn } = drawCardsFromCastillo(updatedPlayer, 1);
+        updatedPlayer = withDraw;
+        logClauses.push('Dragón de Plata: Pagas 1 Oro y robas "' + (drawn[0]?.name || '') + '".');
+      } else if (choice === 'opt_2_gold' && payGold(2) && updatedRival.mano.length > 0) {
+        const disc = updatedRival.mano[0];
+        updatedRival.mano = updatedRival.mano.slice(1);
+        updatedRival.cementerio = [...updatedRival.cementerio, disc];
+        logClauses.push('Dragón de Plata: Pagas 2 Oro y descartas "' + disc.name + '" de la mano rival.');
+      } else if (choice === 'opt_3_gold' && payGold(3)) {
+        const mill = Math.min(2, updatedRival.castillo.length);
+        const milled = updatedRival.castillo.slice(0, mill);
+        updatedRival.castillo = updatedRival.castillo.slice(mill);
+        updatedRival.cementerio = [...updatedRival.cementerio, ...milled];
+        logClauses.push('Dragón de Plata: Pagas 3 Oro y el rival bota ' + mill + ' carta(s) de su Castillo.');
+      }
+      executedAny = true;
+    }
+  }
+
+  // Dragón de Bronce: Cuando Dragón de Bronce sea declarado atacante, debe ser bloqueado por un Aliado oponente a tu elección
+  else if (cardNameUpper.includes('DRAGON DE BRONCE') || cardNameUpper.includes('DRAGÓN DE BRONCE')) {
+    logClauses.push('🐉 Dragón de Bronce en juego: Al ser declarado atacante obliga a un Aliado oponente a seleccionarse como bloqueador.');
+    executedAny = true;
+  }
+
+  // Kernuac el Cazador: En tu fase de vigilia, puedes destruir a Kernuac para buscar 2 cartas del mazo castillo oponente y desterrarlas
+  else if (cardNameUpper.includes('KERNUAC')) {
+    if (isManual) {
+      updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.filter((a) => a.card.id !== card.id);
+      updatedPlayer.cementerio = [...updatedPlayer.cementerio, card];
+      const banishCount = Math.min(2, updatedRival.castillo.length);
+      if (banishCount > 0) {
+        const banished = updatedRival.castillo.slice(0, banishCount);
+        updatedRival.castillo = updatedRival.castillo.slice(banishCount);
+        updatedRival.destierro = [...updatedRival.destierro, ...banished];
+        sound = 'damage';
+        logClauses.push('🏹 Kernuac el Cazador: Se destruye y destierra ' + banishCount + ' carta(s) del Mazo Castillo rival.');
+      }
+      executedAny = true;
+    }
+  }
+
+    // Transmutación: En tu fase de vigilia y hasta el final del turno, tus Tótem pierden su habilidad y se consideran Aliados
+  else if (cardNameUpper.includes('TRANSMUTACION') || cardNameUpper.includes('TRANSMUTACIÓN')) {
+    if (updatedPlayer.lineaApoyo.length > 0) {
+      const totems = updatedPlayer.lineaApoyo.filter((s) => s.card.type === 'Tótem');
+      if (totems.length > 0) {
+        totems.forEach((totem) => {
+          const newAlly: AllyInPlay = {
+            instanceId: 'transmutated-' + totem.card.id + '-' + Date.now(),
+            card: { ...totem.card, type: 'Aliado', strength: totem.card.cost || 2 },
+            baseStrength: totem.card.cost || 2,
+            currentStrength: totem.card.cost || 2,
+            exhausted: false,
+            canAttack: true,
+            attachedWeapons: [],
+          };
+          updatedPlayer.lineaDefensa.push(newAlly);
+        });
+        updatedPlayer.lineaApoyo = updatedPlayer.lineaApoyo.filter((s) => s.card.type !== 'Tótem');
+        sound = 'summon';
+        logClauses.push('🔮 Transmutación: Tus Tótems se convierten en Aliados con Fuerza igual a su coste de oro hasta el final del turno.');
+        executedAny = true;
+      }
+    }
+  }
+
+  // La Espada en la Piedra: Si el Rey Arturo Pendragón no está en juego, los Caballeros no pueden atacar en los 2 siguientes turnos
+  else if (cardNameUpper.includes('ESPADA EN LA PIEDRA')) {
+    const hasArturo = updatedPlayer.lineaDefensa.some((a) => a.card.name.toUpperCase().includes('ARTURO')) ||
+                      updatedRival.lineaDefensa.some((a) => a.card.name.toUpperCase().includes('ARTURO'));
+    if (!hasArturo) {
+      updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.map((a) =>
+        a.card.race === 'Caballero' ? { ...a, canAttack: false } : a
+      );
+      updatedRival.lineaDefensa = updatedRival.lineaDefensa.map((a) =>
+        a.card.race === 'Caballero' ? { ...a, canAttack: false } : a
+      );
+      sound = 'shield';
+      logClauses.push('🗡️ La Espada en la Piedra: Al no estar Rey Arturo en juego, ningún Caballero puede atacar.');
+      executedAny = true;
+    }
+  }
+
+  // Atraer la Tormenta: Anula una carta oponente, a menos que éste bote 3 cartas
+  else if (cardNameUpper.includes('ATRAER LA TORMENTA')) {
+    if (updatedRival.castillo.length >= 3) {
+      const milled = updatedRival.castillo.slice(0, 3);
+      updatedRival.castillo = updatedRival.castillo.slice(3);
+      updatedRival.cementerio = [...updatedRival.cementerio, ...milled];
+      sound = 'damage';
+      logClauses.push('🌩️ Atraer la Tormenta: El oponente decide botar 3 cartas de su Mazo Castillo para evitar que su carta sea anulada.');
+    } else if (updatedRival.lineaDefensa.length > 0) {
+      const target = updatedRival.lineaDefensa[0];
+      updatedRival.lineaDefensa = updatedRival.lineaDefensa.slice(1);
+      updatedRival.cementerio = [...updatedRival.cementerio, target.card, ...(target.attachedWeapons || [])];
+      sound = 'damage';
+      logClauses.push('🌩️ Atraer la Tormenta: Anula y destruye a "' + target.card.name + '".');
+    }
+    executedAny = true;
+  }
+
+  // Barco: Juega Barco en tu fase de vigilia, si tienes a Merlín en juego tus faeries son imbloqueables
+  else if (cardNameUpper.includes('BARCO')) {
+    const hasMerlin = updatedPlayer.lineaDefensa.some((a) => a.card.name.toUpperCase().includes('MERLIN')) ||
+                      (updatedPlayer.lineaAtaque || []).some((a) => a.card.name.toUpperCase().includes('MERLIN'));
+    if (hasMerlin) {
+      updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.map((a) =>
+        a.card.race === 'Faerie' ? { ...a, unblockable: true } : a
+      );
+      updatedPlayer.lineaAtaque = (updatedPlayer.lineaAtaque || []).map((a) =>
+        a.card.race === 'Faerie' ? { ...a, unblockable: true } : a
+      );
+      sound = 'victory';
+      logClauses.push('⛵ Barco de Merlín: Todos tus Faeries ganan la condición de Imbloqueables hasta el final del turno.');
+      executedAny = true;
+    } else {
+      logClauses.push('⛵ Barco: Requiere tener a Mago Merlín en juego para otorgar Imbloqueable a tus Faeries.');
+      executedAny = true;
+    }
+  }
+
+    // Stonehage: Mientras Stonehage esté en juego, los oros en juego pierden sus habilidades
+  else if (cardNameUpper.includes('STONEHAGE')) {
+    logClauses.push('🗿 Stonehage en mesa: Todas las cartas de Oro en juego pierden sus habilidades especiales.');
+    executedAny = true;
+  }
+
+  // Tótem de Fe: Mientras esté en juego, en guerra de Talismanes cada jugador sólo puede jugar 1 Talismán
+  else if (cardNameUpper.includes('TOTEM DE FE') || cardNameUpper.includes('TÓTEM DE FE')) {
+    logClauses.push('🗿 Tótem de Fe en mesa: Limita la Guerra de Talismanes a máximo 1 Talismán por jugador por subfase.');
+    executedAny = true;
+  }
+
+  // El Círculo Eterno: Mientras esté en juego, todas las cartas se consideran Carta Única
+  else if (cardNameUpper.includes('CIRCULO ETERNO') || cardNameUpper.includes('CÍRCULO ETERNO')) {
+    const pUniqueClean = updatedPlayer.lineaDefensa.filter((a, idx, self) =>
+      self.findIndex((other) => other.card.name === a.card.name) === idx
+    );
+    const rUniqueClean = updatedRival.lineaDefensa.filter((a, idx, self) =>
+      self.findIndex((other) => other.card.name === a.card.name) === idx
+    );
+    updatedPlayer.lineaDefensa = pUniqueClean;
+    updatedRival.lineaDefensa = rUniqueClean;
+    sound = 'shield';
+    logClauses.push('⭕ El Círculo Eterno: Aplica regla de Carta Única a todas las cartas en juego y destruye duplicados.');
+    executedAny = true;
+  }
+
+  // Armadura del Sol: Por cada Talismán jugado en guerra de Talismanes, el portador gana + 1 a la fuerza
+  else if (cardNameUpper.includes('ARMADURA DEL SOL')) {
+    logClauses.push('☀️ Armadura del Sol: El portador gana +1 a la Fuerza por cada Talismán jugado en Guerra de Talismanes.');
+    executedAny = true;
+  }
+
   // =========================================================================
   // 1. DECISION / CHOICE ABILITIES (User Decision Modal)
   // =========================================================================

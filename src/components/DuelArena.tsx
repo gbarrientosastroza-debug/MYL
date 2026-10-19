@@ -3443,24 +3443,29 @@ export const DuelArena: React.FC<DuelArenaProps> = ({
                   !player.oroJugadoEsteTurno &&
                   !alreadyInGold;
                 const eligibleGold = getEligibleGoldCards(player.oroCards, card);
+                const isResponseCapableCard = card.type === 'Talismán' || (card.ability || '').toLowerCase().includes('en respuesta');
+                const canPlayInOpponentTurn = activePlayer === 'cpu' && isResponseCapableCard && eligibleGold.length >= card.cost;
+
                 const canPlayRegular =
                   !isGold &&
-                  activePlayer === 'player' &&
-                  (phase === 'VIGILIA' ||
-                    phase === 'AGRUPACION' ||
-                    (phase === 'GUERRA_TALISMANES' && card.type === 'Talismán')) &&
+                  (canPlayInOpponentTurn ||
+                    (activePlayer === 'player' &&
+                      (phase === 'VIGILIA' ||
+                        phase === 'AGRUPACION' ||
+                        (phase === 'GUERRA_TALISMANES' && card.type === 'Talismán')))) &&
                   eligibleGold.length >= card.cost;
 
                 const isPlayable = canPlayGold || canPlayRegular;
 
                 const cannotPlayReason =
-                  activePlayer !== 'player'
+                  activePlayer !== 'player' && !isResponseCapableCard
                     ? 'No es tu turno de juego.'
                     : isGold && player.oroJugadoEsteTurno
                     ? 'Regla DAR 4.2.5: Solo puedes jugar 1 carta de Oro por turno en tu Fase de Vigilia.'
                     : isGold && alreadyInGold
                     ? `Regla DAR 4.1.2: "${card.name}" es una Carta Única y ya tienes una en tu Reserva de Oro.`
                     : !isGold &&
+                      activePlayer === 'player' &&
                       phase !== 'VIGILIA' &&
                       phase !== 'AGRUPACION' &&
                       !(phase === 'GUERRA_TALISMANES' && card.type === 'Talismán')

@@ -2966,6 +2966,205 @@ export function executeCardOnPlayAbility(
     executedAny = true;
   }
 
+    // Capa de Invisibilidad: En respuesta a que tu oponente baje una carta, ésta es barajada en su mazo castillo
+  else if (cardNameUpper.includes('CAPA DE INVISIBILIDAD') || abilityText.includes('ésta es barajada en su mazo castillo')) {
+    if (updatedRival.lineaDefensa.length > 0) {
+      const target = updatedRival.lineaDefensa[updatedRival.lineaDefensa.length - 1];
+      updatedRival.lineaDefensa = updatedRival.lineaDefensa.filter((a) => a.instanceId !== target.instanceId);
+      updatedRival.castillo = [...updatedRival.castillo, target.card].sort(() => Math.random() - 0.5);
+      sound = 'flick';
+      logClauses.push();
+      executedAny = true;
+    } else if (updatedRival.lineaApoyo.length > 0) {
+      const target = updatedRival.lineaApoyo[updatedRival.lineaApoyo.length - 1];
+      updatedRival.lineaApoyo = updatedRival.lineaApoyo.filter((s) => s.instanceId !== target.instanceId);
+      updatedRival.castillo = [...updatedRival.castillo, target.card].sort(() => Math.random() - 0.5);
+      sound = 'flick';
+      logClauses.push();
+      executedAny = true;
+    }
+  }
+
+    // La Mirada de Mordred: En respuesta a declarar tu bloqueo, tus Aliados en línea de ataque vuelven a la línea de defensa y pueden ser declarados bloqueadores
+  else if (cardNameUpper.includes('MIRADA DE MORDRED') || abilityText.includes('declarar tu bloqueo')) {
+    const attackingAllies = updatedPlayer.lineaAtaque || [];
+    if (attackingAllies.length > 0) {
+      const resetAllies = attackingAllies.map((a) => ({
+        ...a,
+        exhausted: false,
+        cannotDefend: false,
+      }));
+      updatedPlayer.lineaDefensa = [...updatedPlayer.lineaDefensa, ...resetAllies];
+      updatedPlayer.lineaAtaque = [];
+      sound = 'shield';
+      logClauses.push('👁️ La Mirada de Mordred: Tus Aliados en línea de ataque retornan a la línea de defensa para bloquear.');
+      executedAny = true;
+    }
+  }
+
+  // Ataque Sorpresa / Ataque de Aliento: En respuesta a resolver el daño, tu oponente recibe el mismo daño hecho a tu mazo castillo
+  else if (
+    cardNameUpper.includes('ATAQUE SORPRESA') ||
+    cardNameUpper.includes('ATAQUE DE ALIENTO') ||
+    abilityText.includes('reciba el mismo daño hecho a tu mazo castillo')
+  ) {
+    sound = 'damage';
+    logClauses.push('💥 ' + card.name + ': En respuesta a resolver el daño, el oponente reflejará el daño de combate recibido.');
+    executedAny = true;
+  }
+
+  // Tótem Maldito: En respuesta a un ataque oponente, eliges un Aliado en su línea de defensa para bloquear su ataque
+  else if (cardNameUpper.includes('TOTEM MALDITO') || abilityText.includes('línea de defensa para bloquear su ataque')) {
+    if (updatedRival.lineaDefensa.length > 0) {
+      const defenderChosen = updatedRival.lineaDefensa[0];
+      sound = 'shield';
+      logClauses.push('🗿 Tótem Maldito: En respuesta al ataque rival, fuerzas a ' + defenderChosen.card.name + ' a defender el ataque.');
+      executedAny = true;
+    }
+  }
+
+  // Tótem de Runas Élficas: En respuesta a declarar tu ataque, pones un Aliado oponente en tu línea de ataque
+  else if (cardNameUpper.includes('RUNAS ELFICAS') || abilityText.includes('ponerlo en tu línea de ataque')) {
+    if (updatedRival.lineaDefensa.length > 0) {
+      const stolen = updatedRival.lineaDefensa[0];
+      updatedRival.lineaDefensa = updatedRival.lineaDefensa.slice(1);
+      updatedPlayer.lineaAtaque = [
+        ...(updatedPlayer.lineaAtaque || []),
+        {
+          ...stolen,
+          hasAttackedThisTurn: true,
+        },
+      ];
+      sound = 'summon';
+      logClauses.push('🗿 Tótem de Runas Élficas: Colocas a ' + stolen.card.name + ' en tu Línea de Ataque para combatir este turno.');
+      executedAny = true;
+    }
+  }
+
+  // Congelar: En respuesta a un ataque, un Aliado oponente pierde su habilidad hasta el final del turno
+  else if (cardNameUpper.includes('CONGELAR') || (abilityText.includes('en respuesta a un ataque') && abilityText.includes('pierde su habilidad'))) {
+    if (updatedRival.lineaAtaque && updatedRival.lineaAtaque.length > 0) {
+      const atk = updatedRival.lineaAtaque[0];
+      sound = 'shield';
+      logClauses.push('❄️ Congelar: En respuesta al ataque, ' + atk.card.name + ' pierde su habilidad hasta el final del turno.');
+      executedAny = true;
+    }
+  }
+
+  // Leprechaun: En respuesta a un ataque, los Aliados oponentes ganan -1 a la fuerza
+  else if (cardNameUpper.includes('LEPRECHAUN') && abilityText.includes('en respuesta a un ataque')) {
+    updatedRival.lineaDefensa = updatedRival.lineaDefensa.map((a) => ({
+      ...a,
+      turnStrengthBonus: (a.turnStrengthBonus || 0) - 1,
+      currentStrength: Math.max(0, a.currentStrength - 1),
+    }));
+    updatedRival.lineaAtaque = (updatedRival.lineaAtaque || []).map((a) => ({
+      ...a,
+      turnStrengthBonus: (a.turnStrengthBonus || 0) - 1,
+      currentStrength: Math.max(0, a.currentStrength - 1),
+    }));
+    sound = 'damage';
+    logClauses.push('🍀 Leprechaun: En respuesta al ataque, todos los Aliados oponentes ganan -1 a la Fuerza.');
+    executedAny = true;
+  }
+
+    // Each Uisge: En tu fase de vigilia y una vez por turno, puedes pagar el coste de una carta en tu cementerio para barajarla en tu mazo castillo
+  else if (cardNameUpper.includes('EACH USIGE') || abilityText.includes('pagar el coste de una carta en tu cementerio')) {
+    if (updatedPlayer.cementerio.length === 0) {
+      return {
+        updatedPlayer,
+        updatedRival,
+        logMessage: '⚠️ Tu Cementerio está vacío.',
+        abilityName: card.name,
+        activatedSuccessfully: false,
+      };
+    }
+    if (!isCpu) {
+      pendingTutor = {
+        sourceZone: 'cementerio',
+        filterType: 'any',
+        destination: 'castillo_shuffle',
+        maxCount: 1,
+        reason: 'Each Uisge: Elige 1 carta de tu Cementerio para barajar en tu Mazo Castillo',
+        cardName: card.name,
+      };
+      logClauses.push('Each Uisge: Elige 1 carta de tu Cementerio para barajarla en tu Mazo Castillo.');
+    } else {
+      const recycled = updatedPlayer.cementerio[0];
+      updatedPlayer.cementerio = updatedPlayer.cementerio.slice(1);
+      updatedPlayer.castillo = [...updatedPlayer.castillo, recycled].sort(() => Math.random() - 0.5);
+      logClauses.push('Each Uisge: Baraja 1 carta del Cementerio al Mazo Castillo.');
+    }
+    executedAny = true;
+  }
+
+  // La Traición de Lancelot: Destruye uno de tus Aliados para que tu oponente bote tantas cartas como fuerza tenga el Aliado
+  else if (cardNameUpper.includes('TRAICION DE LANCELOT') || abilityText.includes('destruye uno de tus aliados para que tu oponente bote')) {
+    const friendlyAllies = [...updatedPlayer.lineaDefensa, ...(updatedPlayer.lineaAtaque || [])];
+    if (friendlyAllies.length === 0) {
+      return {
+        updatedPlayer,
+        updatedRival,
+        logMessage: '⚠️ No tienes Aliados en juego para sacrificar con La Traición de Lancelot.',
+        abilityName: card.name,
+        activatedSuccessfully: false,
+      };
+    }
+    if (chosenOptionId) {
+      const target = friendlyAllies.find((a) => a.instanceId === chosenOptionId) || friendlyAllies[0];
+      updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.filter((a) => a.instanceId !== target.instanceId);
+      updatedPlayer.lineaAtaque = (updatedPlayer.lineaAtaque || []).filter((a) => a.instanceId !== target.instanceId);
+      updatedPlayer.cementerio = [...updatedPlayer.cementerio, target.card, ...(target.attachedWeapons || [])];
+
+      const millCount = Math.min(target.currentStrength, updatedRival.castillo.length);
+      if (millCount > 0) {
+        const milled = updatedRival.castillo.slice(0, millCount);
+        updatedRival.castillo = updatedRival.castillo.slice(millCount);
+        updatedRival.cementerio = [...updatedRival.cementerio, ...milled];
+      }
+      sound = 'damage';
+      logClauses.push('💔 La Traición de Lancelot: Destruyes a "' + target.card.name + '" (' + target.currentStrength + ' F). El rival bota ' + millCount + ' carta(s) de su Mazo Castillo.');
+      executedAny = true;
+    } else {
+      if (!isCpu && friendlyAllies.length > 1) {
+        return {
+          updatedPlayer,
+          updatedRival,
+          logMessage: 'Elige qué Aliado destruir para que el rival bote cartas.',
+          abilityName: card.name,
+          activatedSuccessfully: true,
+          pendingChoice: {
+            title: 'LA TRAICIÓN DE LANCELOT',
+            cardName: card.name,
+            description: 'Selecciona el Aliado propio que deseas destruir para infligir daño de Mazo Castillo equivalente a su Fuerza:',
+            options: friendlyAllies.map((a) => ({
+              id: a.instanceId,
+              label: a.card.name + ' (' + a.currentStrength + ' F)',
+              description: 'Destruye a ' + a.card.name + '. El rival botará ' + a.currentStrength + ' carta(s) de su Castillo.',
+              icon: '💥',
+            })),
+            invokingCard: card,
+          },
+        };
+      } else {
+        const target = friendlyAllies[0];
+        updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.filter((a) => a.instanceId !== target.instanceId);
+        updatedPlayer.lineaAtaque = (updatedPlayer.lineaAtaque || []).filter((a) => a.instanceId !== target.instanceId);
+        updatedPlayer.cementerio = [...updatedPlayer.cementerio, target.card, ...(target.attachedWeapons || [])];
+
+        const millCount = Math.min(target.currentStrength, updatedRival.castillo.length);
+        if (millCount > 0) {
+          const milled = updatedRival.castillo.slice(0, millCount);
+          updatedRival.castillo = updatedRival.castillo.slice(millCount);
+          updatedRival.cementerio = [...updatedRival.cementerio, ...milled];
+        }
+        sound = 'damage';
+        logClauses.push('💔 La Traición de Lancelot: Destruyes a "' + target.card.name + '" (' + target.currentStrength + ' F). El rival bota ' + millCount + ' carta(s) de su Mazo Castillo.');
+        executedAny = true;
+      }
+    }
+  }
+
   // =========================================================================
   // 6. DESTRUCTION / BOUNCE / BANISH
   // =========================================================================
@@ -4660,6 +4859,47 @@ export function executeTurnEndAbilities(
     }
   }
 
+    // 1c. Sir Lionel: En respuesta a finalizar tu turno, si está en línea de ataque puedes agruparlo
+  if (target.lineaAtaque && target.lineaAtaque.length > 0) {
+    const lionelIdx = target.lineaAtaque.findIndex((a) => a.card.name.toUpperCase().includes('SIR LIONEL'));
+    if (lionelIdx !== -1) {
+      const lionel = target.lineaAtaque[lionelIdx];
+      const newAtk = [
+        ...target.lineaAtaque.slice(0, lionelIdx),
+        ...target.lineaAtaque.slice(lionelIdx + 1),
+      ];
+      const newDef = [
+        ...target.lineaDefensa,
+        { ...lionel, exhausted: false, blockedById: undefined },
+      ];
+      setTarget({
+        ...target,
+        lineaAtaque: newAtk,
+        lineaDefensa: newDef,
+      });
+      const lionelMsg = '🛡️ Sir Lionel: En respuesta a finalizar tu turno, regresa de la línea de ataque a la línea de defensa.';
+      logMessages.push(lionelMsg);
+      specialTriggerLogs.push(lionelMsg);
+    }
+  }
+
+  // 1d. Hijas del Caldero: Si tienes 3 Hijas del Caldero en juego: en respuesta a finalizar tu turno, puedes desterrarlas para ganar un turno extra
+  const hijasInPlay = targetAllies.filter((a) => a.card.name.toUpperCase().includes('HIJAS DEL CALDERO'));
+  if (hijasInPlay.length >= 3) {
+    const hijasIds = new Set(hijasInPlay.map((h) => h.instanceId));
+    const cleanDef = target.lineaDefensa.filter((a) => !hijasIds.has(a.instanceId));
+    const cleanAtk = (target.lineaAtaque || []).filter((a) => !hijasIds.has(a.instanceId));
+    setTarget({
+      ...target,
+      lineaDefensa: cleanDef,
+      lineaAtaque: cleanAtk,
+      destierro: [...target.destierro, ...hijasInPlay.map((h) => h.card)],
+    });
+    const hijasMsg = '🔮 Hijas del Caldero: En respuesta a finalizar tu turno, desterraste 3 Hijas del Caldero para ganar un turno extra.';
+    logMessages.push(hijasMsg);
+    specialTriggerLogs.push(hijasMsg);
+  }
+
   // 2. Banishing La Lanza de Los Dioses at turn end
   const currentTarget = activeTurnPlayer === 'player' ? updatedPlayer : updatedCpu;
   let lanceBanished = false;
@@ -5316,6 +5556,23 @@ export function checkLeavingPlayAllies(
   leavingAllies.forEach((item) => {
     const card = 'card' in item ? item.card : item;
     const nameUpper = card.name.toUpperCase();
+
+    const isCpuOwner = alliesOwner === 'cpu';
+    const ownerState = isCpuOwner ? updatedCpu : updatedPlayer;
+    const rivalState = isCpuOwner ? updatedPlayer : updatedCpu;
+
+    const destRes = checkDestructionResponseTriggers(card, ownerState, rivalState, isCpuOwner);
+    if (destRes.logMessages.length > 0) {
+      logMessages.push(...destRes.logMessages);
+      if (isCpuOwner) {
+        updatedCpu = destRes.updatedPlayer;
+        updatedPlayer = destRes.updatedRival;
+      } else {
+        updatedPlayer = destRes.updatedPlayer;
+        updatedCpu = destRes.updatedRival;
+      }
+    }
+
     if (nameUpper.includes('ELLYLLON')) {
       const targetOpponent = alliesOwner === 'player' ? updatedCpu : updatedPlayer;
       const mill = Math.min(2, targetOpponent.castillo.length);
@@ -5344,3 +5601,146 @@ export function checkLeavingPlayAllies(
 }
 
 
+
+
+export interface DestructionResponseResult {
+  saved: boolean;
+  updatedPlayer: PlayerState;
+  updatedRival: PlayerState;
+  logMessages: string[];
+}
+
+/**
+ * Checks and resolves "en respuesta a que sea destruido/a" triggers
+ * for cards being destroyed (Rey Arturo, Lady Dawn, Santo Grial, Aulladores Blancos, Cuna de Gusanos, Galeb Duhr, Mesa Redonda, Isolda).
+ */
+export function checkDestructionResponseTriggers(
+  destroyedCard: CardData,
+  owner: PlayerState,
+  rival: PlayerState,
+  isCpu: boolean = false
+): DestructionResponseResult {
+  let updatedPlayer = { ...owner };
+  let updatedRival = { ...rival };
+  const logMessages: string[] = [];
+  let saved = false;
+
+  const cardNameUpper = (destroyedCard.name || '').toUpperCase().trim();
+
+  // 1. REY ARTURO PENDRAGÓN: "En respuesta a que sea destruido, puedes descartar 2 para salvarlo."
+  if (cardNameUpper.includes('ARTURO')) {
+    if (updatedPlayer.mano.length >= 2) {
+      const discarded = updatedPlayer.mano.slice(0, 2);
+      updatedPlayer.mano = updatedPlayer.mano.slice(2);
+      updatedPlayer.cementerio = [...updatedPlayer.cementerio, ...discarded];
+      saved = true;
+      logMessages.push();
+    }
+  }
+
+  // 2. LADY DAWN: "En respuesta a que uno de tus Caballeros sea destruido, puedes pagar 3 de oro o destruir a Lady Dawn para salvarlo."
+  if (!saved && destroyedCard.type === 'Aliado' && destroyedCard.race === 'Caballero') {
+    const ladyDawnAlly = updatedPlayer.lineaDefensa.find((a) => a.card.name.toUpperCase().includes('LADY DAWN'));
+    if (ladyDawnAlly) {
+      if (updatedPlayer.reservaOro >= 3) {
+        updatedPlayer.reservaOro -= 3;
+        saved = true;
+        logMessages.push();
+      } else {
+        updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.filter((a) => a.instanceId !== ladyDawnAlly.instanceId);
+        updatedPlayer.cementerio = [...updatedPlayer.cementerio, ladyDawnAlly.card];
+        saved = true;
+        logMessages.push();
+      }
+    }
+  }
+
+  // 3. ISOLDA: "En respuesta a la destrucción de uno de tus Caballeros, puedes desterrar a Isolda para salvarlo."
+  if (!saved && destroyedCard.type === 'Aliado' && destroyedCard.race === 'Caballero') {
+    const isoldaAlly = updatedPlayer.lineaDefensa.find((a) => a.card.name.toUpperCase().includes('ISOLDA'));
+    if (isoldaAlly) {
+      updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.filter((a) => a.instanceId !== isoldaAlly.instanceId);
+      updatedPlayer.destierro = [...updatedPlayer.destierro, isoldaAlly.card];
+      saved = true;
+      logMessages.push();
+    }
+  }
+
+  // 4. SANTO GRIAL: "En respuesta a que una de tus cartas en juego sea destruida, juega a Santo Grial para subirla a la mano."
+  if (!saved) {
+    const grialInHand = updatedPlayer.mano.find((c) => c.name.toUpperCase().includes('SANTO GRIAL'));
+    if (grialInHand && updatedPlayer.reservaOro >= grialInHand.cost) {
+      updatedPlayer.mano = updatedPlayer.mano.filter((c) => c.id !== grialInHand.id);
+      updatedPlayer.cementerio = [...updatedPlayer.cementerio, grialInHand];
+      updatedPlayer.reservaOro -= grialInHand.cost;
+      updatedPlayer.mano = [...updatedPlayer.mano, destroyedCard];
+      saved = true;
+      logMessages.push();
+    }
+  }
+
+  // 5. GALEB DUHR: "En respuesta a que uno de tus oros sea destruido, puedes barajar a Galeb Duhr en tu mazo castillo para salvarlo."
+  if (!saved && destroyedCard.type === 'Oro') {
+    const galebAlly = updatedPlayer.lineaDefensa.find((a) => a.card.name.toUpperCase().includes('GALEB DUHR'));
+    if (galebAlly) {
+      updatedPlayer.lineaDefensa = updatedPlayer.lineaDefensa.filter((a) => a.instanceId !== galebAlly.instanceId);
+      updatedPlayer.castillo = [...updatedPlayer.castillo, galebAlly.card].sort(() => Math.random() - 0.5);
+      saved = true;
+      logMessages.push();
+    }
+  }
+
+  // 6. AULLADORES BLANCOS: "En respuesta a que una de tus cartas sea destruida, destruye una carta oponente del mismo tipo."
+  const aulladoresInHand = updatedPlayer.mano.find((c) => c.name.toUpperCase().includes('AULLADORES BLANCOS'));
+  if (aulladoresInHand && updatedPlayer.reservaOro >= aulladoresInHand.cost) {
+    updatedPlayer.mano = updatedPlayer.mano.filter((c) => c.id !== aulladoresInHand.id);
+    updatedPlayer.cementerio = [...updatedPlayer.cementerio, aulladoresInHand];
+    updatedPlayer.reservaOro -= aulladoresInHand.cost;
+
+    if (destroyedCard.type === 'Aliado' && updatedRival.lineaDefensa.length > 0) {
+      const target = updatedRival.lineaDefensa[0];
+      updatedRival.lineaDefensa = updatedRival.lineaDefensa.slice(1);
+      updatedRival.cementerio = [...updatedRival.cementerio, target.card, ...(target.attachedWeapons || [])];
+      logMessages.push();
+    } else if (destroyedCard.type === 'Tótem' && updatedRival.lineaApoyo.length > 0) {
+      const target = updatedRival.lineaApoyo[0];
+      updatedRival.lineaApoyo = updatedRival.lineaApoyo.slice(1);
+      updatedRival.cementerio = [...updatedRival.cementerio, target.card];
+      logMessages.push();
+    }
+  }
+
+  // 7. CUNA DE GUSANOS: "En respuesta a que uno de tus aliados sea destruido, baraja de tu cementerio a tu mazo castillo tantas cartas como fuerza tenga ese aliado."
+  const cunaInHand = updatedPlayer.mano.find((c) => c.name.toUpperCase().includes('CUNA DE GUSANOS'));
+  if (cunaInHand && destroyedCard.type === 'Aliado' && updatedPlayer.reservaOro >= cunaInHand.cost && updatedPlayer.cementerio.length > 0) {
+    updatedPlayer.mano = updatedPlayer.mano.filter((c) => c.id !== cunaInHand.id);
+    updatedPlayer.cementerio = [...updatedPlayer.cementerio, cunaInHand];
+    updatedPlayer.reservaOro -= cunaInHand.cost;
+
+    const count = Math.min(destroyedCard.strength || 1, updatedPlayer.cementerio.length);
+    const recycled = updatedPlayer.cementerio.slice(0, count);
+    updatedPlayer.cementerio = updatedPlayer.cementerio.slice(count);
+    updatedPlayer.castillo = [...updatedPlayer.castillo, ...recycled].sort(() => Math.random() - 0.5);
+    logMessages.push();
+  }
+
+  // 8. MESA REDONDA: "En respuesta a que Mesa Redonda sea destruido, destruye 1 oro oponente."
+  if (cardNameUpper.includes('MESA REDONDA') && updatedRival.oroCards.length > 0) {
+    const destroyedGold = updatedRival.oroCards[0];
+    updatedRival.oroCards = updatedRival.oroCards.slice(1);
+    updatedRival.cementerio = [...updatedRival.cementerio, destroyedGold];
+    updatedRival.reservaOro = Math.max(0, updatedRival.reservaOro - 1);
+    logMessages.push();
+  }
+
+  function logClauses(list: string[], msg: string) {
+    list.push(msg);
+  }
+
+  return {
+    saved,
+    updatedPlayer,
+    updatedRival,
+    logMessages,
+  };
+}

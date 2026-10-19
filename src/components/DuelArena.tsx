@@ -3719,6 +3719,41 @@ export const DuelArena: React.FC<DuelArenaProps> = ({
         </div>
       )}
 
+      {/* Opponent Card Play Response Modal (Reglamento D.A.R. 1.0 - En Respuesta a que el Oponente Juegue una Carta) */}
+      {rivalResponsePrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
+          <div className="bg-neutral-900 border-2 border-purple-500 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 text-center">
+            <div className="text-3xl">📜</div>
+            <h3 className="text-lg font-cinzel font-bold text-purple-300">
+              ¡Respuesta a Jugada Rival! (D.A.R. 6.7)
+            </h3>
+            <p className="text-xs text-neutral-300 leading-relaxed">
+              El Rival (CPU) acaba de jugar la carta <strong className="text-amber-400 font-cinzel">"{rivalResponsePrompt.rivalCard.name}"</strong> ({rivalResponsePrompt.rivalCard.type}).
+            </p>
+            <div className="p-3 rounded-lg bg-neutral-950 border border-purple-500/40 text-left text-xs font-mono text-purple-200">
+              💬 <em>"En respuesta a que tu oponente juegue / baje una carta, puedes jugar un Talismán o habilidad en respuesta antes de su resolución."</em>
+            </div>
+            <p className="text-xs text-neutral-400">
+              ¿Deseas responder jugando una carta o habilidad de tu mano?
+            </p>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                onClick={rivalResponsePrompt.onAnnul}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white font-cinzel font-bold text-xs shadow-lg shadow-purple-950/60 cursor-pointer transition-transform hover:scale-102"
+              >
+                ⚡ Responder / Jugar Carta
+              </button>
+              <button
+                onClick={rivalResponsePrompt.onPass}
+                className="py-2.5 px-4 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-cinzel text-xs cursor-pointer transition-colors"
+              >
+                Pasar / No Responder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Player Defender Block Choice Modal (DAR 5.3.2) */}
       {playerBlockPromptState && playerBlockPromptState.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/90 backdrop-blur-md animate-in fade-in">

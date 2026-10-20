@@ -1961,6 +1961,131 @@ export function executeCardOnPlayAbility(
     executedAny = true;
   }
 
+    // El Poeta: Muestra listado de cartas del mazo oponente; elegir carta que no se pueda jugar mientras El Poeta esté en juego
+  else if (cardNameUpper.includes('EL POETA') || cardNameUpper.includes('POETA')) {
+    if (!chosenOptionId && !isCpu) {
+      const oppDeckAndHand = [...updatedRival.castillo, ...updatedRival.mano];
+      const uniqueOppCards = Array.from(new Set(oppDeckAndHand.map((c) => c.name)));
+      const options = uniqueOppCards.slice(0, 15).map((cardName) => ({
+        id: cardName.toUpperCase(),
+        label: cardName,
+        description: 'Prohibir jugar ' + cardName + ' mientras El Poeta permanezca en mesa.',
+        icon: '📜',
+      }));
+
+      return {
+        updatedPlayer,
+        updatedRival,
+        logMessage: 'El Poeta: Elige qué carta oponente no podrá ser jugada.',
+        abilityName: card.name,
+        activatedSuccessfully: true,
+        pendingChoice: {
+          title: 'EL POETA (PROHIBICIÓN DE CARTA)',
+          cardName: card.name,
+          description: 'Selecciona una carta del Mazo o Mano rival para inhabilitar su juego mientras El Poeta esté en mesa:',
+          options,
+          invokingCard: card,
+        },
+      };
+    } else if (chosenOptionId) {
+      logClauses.push('📜 El Poeta nombra la carta "' + chosenOptionId + '": No podrá ser jugada por el oponente mientras El Poeta siga en mesa.');
+      executedAny = true;
+    }
+  }
+
+  // Sir Bedivere: Mostrar listado de aliados de mazo oponente, de ese listado elegir carta que si está en la mano oponente debe ser jugada en línea de defensa del jugador que utilizó la habilidad
+  else if (cardNameUpper.includes('BEDIVERE')) {
+    if (!chosenOptionId && !isCpu) {
+      const oppAllies = updatedRival.castillo.filter((c) => c.type === 'Aliado');
+      const uniqueOppAllies = Array.from(new Set(oppAllies.map((c) => c.name)));
+      const options = (uniqueOppAllies.length > 0 ? uniqueOppAllies : ['Rey Arturo Pendragón', 'Sir Lancelot', 'Sir Gawein', 'Sir Pérsival', 'Sir Galahad']).map((allyName) => ({
+        id: allyName.toUpperCase(),
+        label: allyName,
+        description: 'Verificar si el oponente tiene a ' + allyName + ' en su mano para colocarlo en tu Línea de Defensa.',
+        icon: '🔮',
+      }));
+
+      return {
+        updatedPlayer,
+        updatedRival,
+        logMessage: 'Sir Bedivere: Selecciona un Aliado del Mazo rival para comprobar si está en su mano.',
+        abilityName: card.name,
+        activatedSuccessfully: true,
+        pendingChoice: {
+          title: 'SIR BEDIVERE (REVELACIÓN Y ADQUISICIÓN)',
+          cardName: card.name,
+          description: 'Elige un Aliado del Mazo oponente. Si tu oponente lo tiene en su mano, ¡pasa a tu Línea de Defensa gratis!',
+          options,
+          invokingCard: card,
+        },
+      };
+    } else if (chosenOptionId) {
+      const foundInHandIdx = updatedRival.mano.findIndex(
+        (c) => c.type === 'Aliado' && c.name.toUpperCase().trim() === chosenOptionId.toUpperCase().trim()
+      );
+
+      if (foundInHandIdx !== -1) {
+        const stolenCard = updatedRival.mano[foundInHandIdx];
+        updatedRival.mano = [
+          ...updatedRival.mano.slice(0, foundInHandIdx),
+          ...updatedRival.mano.slice(foundInHandIdx + 1),
+        ];
+        const newAlly: AllyInPlay = {
+          instanceId: 'stolen-ally-' + stolenCard.id + '-' + Date.now(),
+          card: stolenCard,
+          baseStrength: stolenCard.strength,
+          currentStrength: stolenCard.strength,
+          exhausted: false,
+          canAttack: false,
+          attachedWeapons: [],
+        };
+        updatedPlayer.lineaDefensa.push(newAlly);
+        sound = 'summon';
+        logClauses.push('🔮 ¡Sir Bedivere adivinó con éxito! Tu oponente tenía a "' + stolenCard.name + '" en su mano. Entra directamente a tu Línea de Defensa sin pagar su coste.');
+      } else {
+        logClauses.push('🔮 Sir Bedivere: Tu oponente NO tenía la carta nombrada en su mano.');
+      }
+      executedAny = true;
+    }
+  }
+
+  // Fe sin Límites: Se juega en respuesta a la utilización de un talismán por parte del rival para anular su efecto
+  else if (cardNameUpper.includes('FE SIN LIMITE') || cardNameUpper.includes('FE SIN LÍMITE')) {
+    if (updatedRival.cementerio.length > 0) {
+      const lastTalisman = updatedRival.cementerio.filter((c) => c.type === 'Talismán').pop();
+      if (lastTalisman) {
+        logClauses.push('🛡️ Fe sin Límites: Anula y cancela los efectos del Talismán "' + lastTalisman.name + '" jugado por el rival.');
+      } else {
+        logClauses.push('🛡️ Fe sin Límites jugada para anular el Talismán del rival.');
+      }
+    } else {
+      logClauses.push('🛡️ Fe sin Límites jugada para anular el Talismán del rival.');
+    }
+    sound = 'shield';
+    executedAny = true;
+  }
+
+  // Dragón Dorado: Se juega en respuesta a el juego de cualquier carta por parte del rival para anular dicha carta
+  else if (cardNameUpper.includes('DRAGON DORADO') || cardNameUpper.includes('DRAGÓN DORADO')) {
+    const oppPlayedCard = updatedRival.lineaDefensa[updatedRival.lineaDefensa.length - 1]?.card ||
+                          updatedRival.lineaApoyo[updatedRival.lineaApoyo.length - 1]?.card ||
+                          updatedRival.cementerio[updatedRival.cementerio.length - 1];
+
+    if (oppPlayedCard) {
+      updatedRival.lineaDefensa = updatedRival.lineaDefensa.filter((a) => a.card.id !== oppPlayedCard.id);
+      updatedRival.lineaApoyo = updatedRival.lineaApoyo.filter((s) => s.card.id !== oppPlayedCard.id);
+      if (!updatedRival.cementerio.some((c) => c.id === oppPlayedCard.id)) {
+        updatedRival.cementerio = [...updatedRival.cementerio, oppPlayedCard];
+      }
+      sound = 'damage';
+      logClauses.push('🐉 Dragón Dorado: Anula por completo y envía al Cementerio a la carta "' + oppPlayedCard.name + '" jugada por el rival.');
+    } else {
+      logClauses.push('🐉 Dragón Dorado jugado en respuesta para anular la jugada rival.');
+      sound = 'shield';
+    }
+    executedAny = true;
+  }
+
   // =========================================================================
   // 1. DECISION / CHOICE ABILITIES (User Decision Modal)
   // =========================================================================
